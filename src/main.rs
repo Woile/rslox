@@ -1,6 +1,7 @@
 use multipeek::{multipeek, MultiPeek};
 use nom::number::complete::double;
 use nom::IResult;
+use std::fmt::Display;
 use std::io::Write;
 use std::iter::Enumerate;
 use std::str::Chars;
@@ -23,7 +24,8 @@ fn main() -> JloxResult {
     let args: Vec<String> = env::args().collect();
     match parse_args(&args)? {
         Some(filepath) => run_file(filepath)?,
-        None => run_prompt()?,
+        // None => run_prompt()?,
+        None => run_ast_example()?,
     };
     Ok(())
 }
@@ -412,4 +414,118 @@ impl Scanner {
             )),
         }
     }
+}
+
+// Syntax tree
+
+// struct Expr;
+// trait Expression {}
+
+// struct Binary(Expr, Token, Expr);
+
+enum Expr {
+    Binary(Binary),
+    Literal(Literal),
+    Unary(Unary),
+    Grouping(Grouping),
+}
+
+impl Expr {
+    fn accept<T, V: VisitExpr<T>>(&self, visitor: &V) -> T {
+        return match self {
+            Expr::Binary(binary) => visitor.visit_binary(binary),
+            Expr::Literal(literal) => visitor.visit_literal(literal),
+            Expr::Unary(unary) => visitor.visit_unary(unary),
+            Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
+        };
+    }
+}
+struct Binary(Box<Expr>, Token, Box<Expr>);
+enum Literal {
+    Num(f64),
+    Str(String),
+    Bool(bool),
+}
+
+struct Unary(Token, Box<Expr>);
+struct Grouping(Box<Expr>);
+
+trait VisitExpr<T> {
+    fn visit_binary(&self, expr: &Binary) -> T;
+    fn visit_literal(&self, expr: &Literal) -> T;
+    fn visit_unary(&self, expr: &Unary) -> T;
+    fn visit_grouping(&self, expr: &Grouping) -> T;
+}
+
+struct AstPrinter;
+impl AstPrinter {
+    fn parenthesize(&self, name: String, exprs: &[&Expr]) -> String {
+        let r: String = exprs
+            .iter()
+            .map(|e| e.accept(self))
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        return format!("({name} {r})");
+    }
+
+    fn print(&self, exp: Expr) -> () {
+        let ast_generated = exp.accept(self);
+        println!("{ast_generated}");
+    }
+}
+
+impl VisitExpr<String> for AstPrinter {
+    fn visit_binary(&self, expr: &Binary) -> String {
+        self.parenthesize(
+            expr.1.lexeme.to_owned(),
+            &[expr.0.as_ref(), expr.2.as_ref()],
+        )
+    }
+
+    fn visit_literal(&self, expr: &Literal) -> String {
+        match expr {
+            Literal::Num(n) => n.to_string(),
+            Literal::Str(s) => s.to_owned(),
+            Literal::Bool(b) => format!("{b}"),
+        }
+    }
+
+    fn visit_unary(&self, expr: &Unary) -> String {
+        self.parenthesize(expr.0.lexeme.to_owned(), &[expr.1.as_ref()])
+    }
+
+    fn visit_grouping(&self, expr: &Grouping) -> String {
+        self.parenthesize("group".to_string(), &[expr.0.as_ref()])
+    }
+}
+
+fn run_ast_example() -> JloxResult {
+    // Expr::Binary(Binary {
+
+    let exp = Expr::Binary(Binary(
+        Box::new(Expr::Unary(Unary(
+            Token {
+                token_type: Some(TokenType::Minus),
+                lexeme: String::from("-"),
+                literal: String::from("-"),
+                line: 1,
+            },
+            Box::new(Expr::Literal(Literal::Num(123.0))),
+        ))),
+        Token {
+            token_type: Some(TokenType::Star),
+            lexeme: String::from("*"),
+            literal: String::from("*"),
+            line: 1,
+        },
+        Box::new(Expr::Grouping(Grouping(Box::new(Expr::Literal(
+            Literal::Num(45.67),
+        ))))),
+    ));
+
+    let ast = AstPrinter {};
+    ast.print(exp);
+    // });
+    Ok(())
 }
