@@ -553,7 +553,7 @@ mod ast {
 
 mod parser {
     use crate::{
-        ast::{Binary, Expr, Unary, Literal, Grouping},
+        ast::{Binary, Expr, Grouping, Literal, Unary},
         Token, TokenType,
     };
     use std::{
@@ -647,16 +647,16 @@ mod parser {
         }
 
         fn primary(&mut self) -> ParserResult<Box<Expr>> {
-            if self.fits(vec![TokenType::False]){
+            if self.fits(vec![TokenType::False]) {
                 return Ok(Box::new(Expr::Literal(Literal::Bool(false))));
             }
-            if self.fits(vec![TokenType::True]){
+            if self.fits(vec![TokenType::True]) {
                 return Ok(Box::new(Expr::Literal(Literal::Bool(true))));
             }
-            if self.fits(vec![TokenType::Nil]){
+            if self.fits(vec![TokenType::Nil]) {
                 return Ok(Box::new(Expr::Literal(Literal::Nil("nil".into()))));
             }
-            if self.fits(vec![TokenType::String]){
+            if self.fits(vec![TokenType::String]) {
                 let val = self.previous().literal.clone();
                 return Ok(Box::new(Expr::Literal(Literal::Str(val))));
             }
@@ -668,9 +668,8 @@ mod parser {
             if self.fits(vec![TokenType::LeftParen]) {
                 let expr = self.expression()?;
                 let _ = self.consume(TokenType::RightParen, "Expect ')' after expression.".into());
-                return Ok(Box::new(Expr::Grouping(Grouping(expr))))
+                return Ok(Box::new(Expr::Grouping(Grouping(expr))));
             }
-
 
             Err(ParserError(1, "Something went wrong".into()))
         }
@@ -684,12 +683,15 @@ mod parser {
             }
             return false;
         }
-        fn check_is_num(&self) -> bool {
+        fn check_is_num(&mut self) -> bool {
             if self.is_at_end() {
                 return false;
             }
             match self.peek().token_type {
-                Some(TokenType::Number(_)) => true,
+                Some(TokenType::Number(_)) => {
+                    self.advance();
+                    true
+                }
                 _ => false,
             }
         }
@@ -726,7 +728,8 @@ mod parser {
             if self.check(token_type) {
                 return Ok(self.advance());
             }
-            Err(ParserError(0, message))
+            let line_num = self.peek().line;
+            Err(ParserError(line_num, message))
         }
     }
 }
