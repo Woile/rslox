@@ -460,7 +460,7 @@ mod ast {
         Num(f64),
         Str(String),
         Bool(bool),
-        Nil(String),
+        Nil,
     }
 
     #[derive(Debug)]
@@ -507,7 +507,7 @@ mod ast {
                 Literal::Num(n) => n.to_string(),
                 Literal::Str(s) => s.to_owned(),
                 Literal::Bool(b) => format!("{b}"),
-                Literal::Nil(n) => n.to_owned(),
+                Literal::Nil => "nil".into(),
             }
         }
 
@@ -654,7 +654,7 @@ mod parser {
                 return Ok(Box::new(Expr::Literal(Literal::Bool(true))));
             }
             if self.fits(vec![TokenType::Nil]) {
-                return Ok(Box::new(Expr::Literal(Literal::Nil("nil".into()))));
+                return Ok(Box::new(Expr::Literal(Literal::Nil)));
             }
             if self.fits(vec![TokenType::String]) {
                 let val = self.previous().literal.clone();
@@ -730,6 +730,30 @@ mod parser {
             }
             let line_num = self.peek().line;
             Err(ParserError(line_num, message))
+        }
+
+        fn synchronize(&mut self) -> () {
+            let _ = self.advance();
+            while !self.is_at_end() {
+                if self.previous().token_type == Some(TokenType::Semicolon) {
+                    return;
+                }
+                match self.peek().token_type {
+                    Some(
+                        TokenType::Class
+                        | TokenType::Fun
+                        | TokenType::Var
+                        | TokenType::For
+                        | TokenType::If
+                        | TokenType::While
+                        | TokenType::Print
+                        | TokenType::Return,
+                    ) => return,
+                    _ => {
+                        self.advance();
+                    }
+                }
+            }
         }
     }
 }
