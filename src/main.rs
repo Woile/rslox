@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use clap::Parser;
 use multipeek::{multipeek, MultiPeek};
 use nom::number::complete::double;
@@ -9,6 +11,8 @@ use std::path::PathBuf;
 use std::str::Chars;
 use std::{error, fmt, fs, io};
 
+use crate::interpreter::{Interpreter, RuntimeError};
+use crate::parser::ParserError;
 // struct Jlox;
 
 #[derive(Debug)]
@@ -20,7 +24,17 @@ impl fmt::Display for JLoxError {
     }
 }
 impl error::Error for JLoxError {}
+impl From<ParserError> for JLoxError {
+    fn from(value: ParserError) -> Self {
+        Self(value.0, value.1)
+    }
+}
 
+impl From<RuntimeError> for JLoxError {
+    fn from(value: RuntimeError) -> Self {
+        Self(value.0, value.1)
+    }
+}
 type JloxResult = Result<(), Box<dyn error::Error>>;
 
 #[derive(Parser, Debug)]
@@ -82,10 +96,12 @@ fn run(source: String) -> Result<(), JLoxError> {
     let _ = scanner.scan_tokens();
     println!("{:#?}", scanner.tokens);
     let mut parser = parser::Parser::new(scanner.tokens);
-    let expr = parser.parse();
+    let expr = parser.parse()?;
     println!("-------------");
     println!("{:#?}", expr);
-
+    let interp = Interpreter::new();
+    let lit = interp.evaluate(&expr)?;
+    println!("{:#?}", lit);
     Ok(())
 }
 
@@ -455,7 +471,7 @@ mod ast {
     #[derive(Debug)]
     pub struct Binary(pub Box<Expr>, pub Token, pub Box<Expr>);
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Literal {
         Num(f64),
         Str(String),
@@ -463,6 +479,23 @@ mod ast {
         Nil,
     }
 
+    impl Literal {
+        pub fn is_truthy(&self) -> bool {
+            match self {
+                Literal::Num(_) => true,
+                Literal::Str(_) => true,
+                Literal::Bool(value) => *value,
+                Literal::Nil => false,
+            }
+        }
+
+        pub fn get_num(&self) -> Result<f64, String> {
+            match self {
+                Literal::Num(num) => Ok(*num),
+                _ => Err("NaN".into()),
+            }
+        }
+    }
     #[derive(Debug)]
     pub struct Unary(pub Token, pub Box<Expr>);
 
@@ -554,7 +587,7 @@ mod ast {
 mod parser {
     use crate::{
         ast::{Binary, Expr, Grouping, Literal, Unary},
-        Token, TokenType,
+        JLoxError, Token, TokenType,
     };
     use std::{
         error,
@@ -562,7 +595,7 @@ mod parser {
     };
 
     #[derive(Debug)]
-    pub struct ParserError(usize, String);
+    pub struct ParserError(pub usize, pub String);
 
     impl fmt::Display for ParserError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -570,6 +603,7 @@ mod parser {
         }
     }
     impl error::Error for ParserError {}
+
     type ParserResult<T> = Result<T, ParserError>;
 
     pub struct Parser {
@@ -754,6 +788,82 @@ mod parser {
                     }
                 }
             }
+        }
+    }
+}
+
+mod interpreter {
+    use std::{error, fmt};
+
+    use crate::{
+        ast::{Binary, Expr, Grouping, Literal, Unary, VisitExpr},
+        TokenType,
+    };
+
+    #[derive(Debug)]
+    pub struct RuntimeError(pub usize, pub String);
+
+    impl fmt::Display for RuntimeError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "[Line {}] Parser Error: {}", self.0, self.1)
+        }
+    }
+    impl error::Error for RuntimeError {}
+
+    type RuntimeResult<T> = Result<T, RuntimeError>;
+    pub struct Interpreter;
+
+    impl Interpreter {
+        pub fn new() -> Self {
+            Self {}
+        }
+        pub fn evaluate(&self, expr: &Box<Expr>) -> RuntimeResult<Literal> {
+            expr.accept(self)
+        }
+    }
+
+    impl VisitExpr<RuntimeResult<Literal>> for Interpreter {
+        fn visit_binary(&self, expr: &Binary) -> RuntimeResult<Literal> {
+            let left = self.evaluate(&expr.0)?;
+            let right = self.evaluate(&expr.2)?;
+
+            match expr.1.token_type {
+                Some(TokenType::Minus) => {
+                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    return Ok(Literal::Num(lnum - rnum));
+
+                }
+                Some(TokenType::Slash) => {
+                    todo!();
+                }
+                _ => unreachable!("Binary unreachable token_type"),
+            }
+        }
+
+        fn visit_literal(&self, expr: &Literal) -> RuntimeResult<Literal> {
+            Ok(expr.clone())
+        }
+
+        fn visit_unary(&self, expr: &Unary) -> RuntimeResult<Literal> {
+            let right = self.evaluate(&expr.1)?;
+
+            match expr.0.token_type {
+                Some(TokenType::Minus) => {
+                    if let Literal::Num(num) = right {
+                        return Ok(Literal::Num(-num));
+                    }
+                    unreachable!("Literal is not Num")
+                }
+                Some(TokenType::Bang) => {
+                    return Ok(Literal::Bool(!right.is_truthy()));
+                }
+                _ => Ok(right),
+            }
+        }
+
+        fn visit_grouping(&self, expr: &Grouping) -> RuntimeResult<Literal> {
+            self.evaluate(&expr.0)
         }
     }
 }
