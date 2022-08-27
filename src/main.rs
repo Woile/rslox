@@ -447,6 +447,8 @@ impl Scanner {
 }
 
 mod ast {
+    use std::fmt::Display;
+
     use crate::{JloxResult, Token, TokenType};
 
     #[derive(Debug)]
@@ -503,6 +505,18 @@ mod ast {
             }
         }
     }
+
+    impl Display for Literal {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Literal::Num(val) => write!(f, "`{}`", val),
+                Literal::Str(val) => write!(f, "`{}`", val),
+                Literal::Bool(val) => write!(f, "`{}`", val),
+                Literal::Nil => write!(f, "nil"),
+            }
+        }
+    }
+
     #[derive(Debug)]
     pub struct Unary(pub Token, pub Box<Expr>);
 
@@ -836,7 +850,9 @@ mod interpreter {
 
             match expr.1.token_type {
                 Some(TokenType::Greater) => {
-                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, format!("{left}{v}")))?;
                     let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum > rnum));
                 }
@@ -881,16 +897,14 @@ mod interpreter {
                     }
                     let lstr = left
                         .get_string()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                        .map_err(|v| RuntimeError(expr.1.line, format!("{left} {v}")))?;
                     let rstr = right
                         .get_string()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                        .map_err(|v| RuntimeError(expr.1.line, format!("{right} {v}")))?;
                     return Ok(Literal::Str(format!("{lstr}{rstr}")));
-                },
-                Some(TokenType::BangEqual) => Ok(Literal::Bool(left.ne(&right))),
-                Some(TokenType::EqualEqual) => {
-                    Ok(Literal::Bool(left.eq(&right)))
                 }
+                Some(TokenType::BangEqual) => Ok(Literal::Bool(left.ne(&right))),
+                Some(TokenType::EqualEqual) => Ok(Literal::Bool(left.eq(&right))),
                 _ => unreachable!("Binary unreachable token_type"),
             }
         }
