@@ -471,7 +471,7 @@ mod ast {
     #[derive(Debug)]
     pub struct Binary(pub Box<Expr>, pub Token, pub Box<Expr>);
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub enum Literal {
         Num(f64),
         Str(String),
@@ -493,6 +493,13 @@ mod ast {
             match self {
                 Literal::Num(num) => Ok(*num),
                 _ => Err("NaN".into()),
+            }
+        }
+
+        pub fn get_string(&self) -> Result<String, String> {
+            match self {
+                Literal::Str(value) => Ok(value.to_string()),
+                _ => Err("Not a String".into()),
             }
         }
     }
@@ -828,14 +835,61 @@ mod interpreter {
             let right = self.evaluate(&expr.2)?;
 
             match expr.1.token_type {
+                Some(TokenType::Greater) => {
+                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    return Ok(Literal::Bool(lnum > rnum));
+                }
+                Some(TokenType::GreaterEqual) => {
+                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    return Ok(Literal::Bool(lnum >= rnum));
+                }
+                Some(TokenType::Less) => {
+                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    return Ok(Literal::Bool(lnum < rnum));
+                }
+                Some(TokenType::LessEqual) => {
+                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    return Ok(Literal::Bool(lnum <= rnum));
+                }
                 Some(TokenType::Minus) => {
                     let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Num(lnum - rnum));
-
                 }
                 Some(TokenType::Slash) => {
-                    todo!();
+                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    return Ok(Literal::Num(lnum / rnum));
+                }
+                Some(TokenType::Star) => {
+                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    return Ok(Literal::Num(lnum * rnum));
+                }
+                Some(TokenType::Plus) => {
+                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v));
+                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v));
+
+                    if lnum.is_ok() && rnum.is_ok() {
+                        return Ok(Literal::Num(
+                            lnum.expect("left number NaN") + rnum.expect("right number NaN"),
+                        ));
+                    }
+                    let lstr = left
+                        .get_string()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rstr = right
+                        .get_string()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    return Ok(Literal::Str(format!("{lstr}{rstr}")));
+                },
+                Some(TokenType::BangEqual) => Ok(Literal::Bool(left.ne(&right))),
+                Some(TokenType::EqualEqual) => {
+                    Ok(Literal::Bool(left.eq(&right)))
                 }
                 _ => unreachable!("Binary unreachable token_type"),
             }
