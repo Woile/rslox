@@ -40,8 +40,12 @@ type JloxResult = Result<(), Box<dyn error::Error>>;
 #[derive(Parser, Debug)]
 #[clap(name = "rslox", version, about)]
 struct Args {
+    /// Output the tokens tree generated
+    #[clap(short('t'), long, action)]
+    print_tokens: bool,
+
     /// Output the ast tree generated
-    #[clap(short, long, action)]
+    #[clap(short('a'), long, action)]
     print_ast: bool,
 
     /// Lox files
@@ -52,40 +56,37 @@ struct Args {
 fn main() -> JloxResult {
     let args = Args::parse();
 
-    if let Some(path) = args.path {
-        if args.print_ast {
-            let _ = ast::run_ast_example();
-        }
-        run_file(path)?
+    if let Some(path) = &args.path {
+        run_file(path, &args)?
     } else {
-        run_prompt()?
+        run_prompt(&args)?
     }
 
     Ok(())
 }
 
-fn run_prompt() -> JloxResult {
+fn run_prompt(args: &Args) -> JloxResult {
     loop {
         print!("> ");
         io::stdout().flush().expect("Could not flush");
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
-        if let Some(err) = run(input).err() {
+        if let Some(err) = run(input, args).err() {
             eprintln!("{}", err);
         };
     }
 }
 
-fn run_file(filepath: PathBuf) -> JloxResult {
+fn run_file(filepath: &PathBuf, args: &Args) -> JloxResult {
     let source = fs::read_to_string(filepath)?;
-    if let Some(err) = run(source).err() {
+    if let Some(err) = run(source, args).err() {
         eprintln!("{}", err);
         std::process::exit(65)
     };
     Ok(())
 }
 
-fn run(source: String) -> Result<(), JLoxError> {
+fn run(source: String, args: &Args) -> Result<(), JLoxError> {
     let mut scanner = Scanner {
         source,
         tokens: Vec::new(),
@@ -94,14 +95,18 @@ fn run(source: String) -> Result<(), JLoxError> {
         current: 0,
     };
     let _ = scanner.scan_tokens();
-    println!("{:#?}", scanner.tokens);
+    if args.print_tokens {
+        println!("{:#?}", scanner.tokens);
+    }
     let mut parser = parser::Parser::new(scanner.tokens);
     let expr = parser.parse()?;
-    println!("-------------");
-    println!("{:#?}", expr);
+
+    if args.print_ast {
+        println!("{:#?}", expr);
+    }
     let interp = Interpreter::new();
     let lit = interp.evaluate(&expr)?;
-    println!("{:#?}", lit);
+    println!("{}", lit);
     Ok(())
 }
 
@@ -509,9 +514,9 @@ mod ast {
     impl Display for Literal {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
-                Literal::Num(val) => write!(f, "`{}`", val),
-                Literal::Str(val) => write!(f, "`{}`", val),
-                Literal::Bool(val) => write!(f, "`{}`", val),
+                Literal::Num(val) => write!(f, "{}", val),
+                Literal::Str(val) => write!(f, "{}", val),
+                Literal::Bool(val) => write!(f, "{}", val),
                 Literal::Nil => write!(f, "nil"),
             }
         }
@@ -572,36 +577,6 @@ mod ast {
         fn visit_grouping(&self, expr: &Grouping) -> String {
             self.parenthesize("group".to_string(), &[expr.0.as_ref()])
         }
-    }
-
-    pub fn run_ast_example() -> JloxResult {
-        // Expr::Binary(Binary {
-
-        let exp = Expr::Binary(Binary(
-            Box::new(Expr::Unary(Unary(
-                Token {
-                    token_type: Some(TokenType::Minus),
-                    lexeme: String::from("-"),
-                    literal: String::from("-"),
-                    line: 1,
-                },
-                Box::new(Expr::Literal(Literal::Num(123.0))),
-            ))),
-            Token {
-                token_type: Some(TokenType::Star),
-                lexeme: String::from("*"),
-                literal: String::from("*"),
-                line: 1,
-            },
-            Box::new(Expr::Grouping(Grouping(Box::new(Expr::Literal(
-                Literal::Num(45.67),
-            ))))),
-        ));
-
-        let ast = AstPrinter {};
-        ast.print(exp);
-        // });
-        Ok(())
     }
 }
 
