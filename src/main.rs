@@ -1,4 +1,6 @@
 #![warn(clippy::pedantic)]
+use anyhow::Result;
+use anyhow::__private::kind::TraitKind;
 
 use clap::Parser;
 use multipeek::{multipeek, MultiPeek};
@@ -20,13 +22,13 @@ struct JLoxError(usize, String);
 
 impl fmt::Display for JLoxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Error:\n\n line {}: {}", self.0, self.1)
+        write!(f, "Error:\nline {}: {}", self.0, self.1)
     }
 }
 impl error::Error for JLoxError {}
 impl From<ParserError> for JLoxError {
     fn from(value: ParserError) -> Self {
-        Self(value.0, value.1)
+        Self(value.line, value.message)
     }
 }
 
@@ -72,7 +74,7 @@ fn run_prompt(args: &Args) -> JloxResult {
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         if let Some(err) = run(input, args).err() {
-            eprintln!("{}", err);
+            eprintln!("{:?}", err);
         };
     }
 }
@@ -80,13 +82,14 @@ fn run_prompt(args: &Args) -> JloxResult {
 fn run_file(filepath: &PathBuf, args: &Args) -> JloxResult {
     let source = fs::read_to_string(filepath)?;
     if let Some(err) = run(source, args).err() {
-        eprintln!("{}", err);
+        eprintln!("{:?}", err);
+
         std::process::exit(65)
     };
     Ok(())
 }
 
-fn run(source: String, args: &Args) -> Result<(), JLoxError> {
+fn run(source: String, args: &Args) -> Result<()> {
     let mut scanner = Scanner {
         source,
         tokens: Vec::new(),
@@ -496,14 +499,14 @@ mod ast {
             }
         }
 
-        pub fn get_num(&self) -> Result<f64, String> {
+        pub fn try_num(&self) -> Result<f64, String> {
             match self {
                 Literal::Num(num) => Ok(*num),
                 _ => Err(format!("`{}` NaN", self)),
             }
         }
 
-        pub fn get_string(&self) -> Result<String, String> {
+        pub fn try_string(&self) -> Result<String, String> {
             match self {
                 Literal::Str(value) => Ok(value.to_string()),
                 _ => Err(format!("`{}` Not a String", self)),
@@ -591,11 +594,14 @@ mod parser {
     };
 
     #[derive(Debug)]
-    pub struct ParserError(pub usize, pub String);
+    pub struct ParserError {
+        pub line: usize,
+        pub message: String,
+    }
 
     impl fmt::Display for ParserError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "[Line {}] Parser Error: {}", self.0, self.1)
+            write!(f, "ParserError:\n\n\t[Line {}] {}", self.line, self.message)
         }
     }
     impl error::Error for ParserError {}
@@ -701,7 +707,10 @@ mod parser {
                 return Ok(Box::new(Expr::Grouping(Grouping(expr))));
             }
 
-            Err(ParserError(1, "Something went wrong".into()))
+            Err(ParserError {
+                line: 1,
+                message: "Something went wrong".into(),
+            })
         }
 
         fn fits(&mut self, token_types: Vec<TokenType>) -> bool {
@@ -759,7 +768,10 @@ mod parser {
                 return Ok(self.advance());
             }
             let line_num = self.peek().line;
-            Err(ParserError(line_num, message))
+            Err(ParserError {
+                line: line_num,
+                message,
+            })
         }
 
         fn synchronize(&mut self) -> () {
@@ -791,6 +803,8 @@ mod parser {
 mod interpreter {
     use std::{error, fmt};
 
+    use anyhow::Result;
+
     use crate::{
         ast::{Binary, Expr, Grouping, Literal, Unary, VisitExpr},
         TokenType,
@@ -801,99 +815,67 @@ mod interpreter {
 
     impl fmt::Display for RuntimeError {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "[Line {}] Parser Error: {}", self.0, self.1)
+            write!(f, "RuntimeError:\n\n\t[Line {}] {}", self.0, self.1)
         }
     }
     impl error::Error for RuntimeError {}
 
-    type RuntimeResult<T> = Result<T, RuntimeError>;
+    // type RuntimeResult<T> = Result<T, RuntimeError>;
     pub struct Interpreter;
 
     impl Interpreter {
         pub fn new() -> Self {
             Self {}
         }
-        pub fn evaluate(&self, expr: &Box<Expr>) -> RuntimeResult<Literal> {
+        pub fn evaluate(&self, expr: &Box<Expr>) -> Result<Literal> {
             expr.accept(self)
         }
     }
 
-    impl VisitExpr<RuntimeResult<Literal>> for Interpreter {
-        fn visit_binary(&self, expr: &Binary) -> RuntimeResult<Literal> {
+    impl VisitExpr<Result<Literal>> for Interpreter {
+        fn visit_binary(&self, expr: &Binary) -> Result<Literal> {
             let left = self.evaluate(&expr.0)?;
             let right = self.evaluate(&expr.2)?;
 
             match expr.1.token_type {
                 Some(TokenType::Greater) => {
-                    let lnum = left
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum > rnum));
                 }
                 Some(TokenType::GreaterEqual) => {
-                    let lnum = left
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum >= rnum));
                 }
                 Some(TokenType::Less) => {
-                    let lnum = left
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum < rnum));
                 }
                 Some(TokenType::LessEqual) => {
-                    let lnum = left
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum <= rnum));
                 }
                 Some(TokenType::Minus) => {
-                    let lnum = left
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Num(lnum - rnum));
                 }
                 Some(TokenType::Slash) => {
-                    let lnum = left
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Num(lnum / rnum));
                 }
                 Some(TokenType::Star) => {
-                    let lnum = left
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Num(lnum * rnum));
                 }
                 Some(TokenType::Plus) => {
-                    let lnum = left
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v));
-                    let rnum = right
-                        .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, v));
+                    let lnum = left.try_num().map_err(|v| RuntimeError(expr.1.line, v));
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.1.line, v));
 
                     if lnum.is_ok() && rnum.is_ok() {
                         return Ok(Literal::Num(
@@ -901,10 +883,10 @@ mod interpreter {
                         ));
                     }
                     let lstr = left
-                        .get_string()
+                        .try_string()
                         .map_err(|v| RuntimeError(expr.1.line, v))?;
                     let rstr = right
-                        .get_string()
+                        .try_string()
                         .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Str(format!("{lstr}{rstr}")));
                 }
@@ -914,19 +896,17 @@ mod interpreter {
             }
         }
 
-        fn visit_literal(&self, expr: &Literal) -> RuntimeResult<Literal> {
+        fn visit_literal(&self, expr: &Literal) -> Result<Literal> {
             Ok(expr.clone())
         }
 
-        fn visit_unary(&self, expr: &Unary) -> RuntimeResult<Literal> {
+        fn visit_unary(&self, expr: &Unary) -> Result<Literal> {
             let right = self.evaluate(&expr.1)?;
 
             match expr.0.token_type {
                 Some(TokenType::Minus) => {
-                    if let Literal::Num(num) = right {
-                        return Ok(Literal::Num(-num));
-                    }
-                    unreachable!("Literal is not Num")
+                    let rnum = right.try_num().map_err(|v| RuntimeError(expr.0.line, v))?;
+                    return Ok(Literal::Num(-rnum));
                 }
                 Some(TokenType::Bang) => {
                     return Ok(Literal::Bool(!right.is_truthy()));
@@ -935,7 +915,7 @@ mod interpreter {
             }
         }
 
-        fn visit_grouping(&self, expr: &Grouping) -> RuntimeResult<Literal> {
+        fn visit_grouping(&self, expr: &Grouping) -> Result<Literal> {
             self.evaluate(&expr.0)
         }
     }
