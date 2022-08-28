@@ -20,7 +20,7 @@ struct JLoxError(usize, String);
 
 impl fmt::Display for JLoxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[Line {}] Error: {}", self.0, self.1)
+        write!(f, "Error:\n\n line {}: {}", self.0, self.1)
     }
 }
 impl error::Error for JLoxError {}
@@ -454,7 +454,7 @@ impl Scanner {
 mod ast {
     use std::fmt::Display;
 
-    use crate::{JloxResult, Token, TokenType};
+    use crate::Token;
 
     #[derive(Debug)]
     pub enum Expr {
@@ -499,14 +499,14 @@ mod ast {
         pub fn get_num(&self) -> Result<f64, String> {
             match self {
                 Literal::Num(num) => Ok(*num),
-                _ => Err("NaN".into()),
+                _ => Err(format!("`{}` NaN", self)),
             }
         }
 
         pub fn get_string(&self) -> Result<String, String> {
             match self {
                 Literal::Str(value) => Ok(value.to_string()),
-                _ => Err("Not a String".into()),
+                _ => Err(format!("`{}` Not a String", self)),
             }
         }
     }
@@ -827,43 +827,73 @@ mod interpreter {
                 Some(TokenType::Greater) => {
                     let lnum = left
                         .get_num()
-                        .map_err(|v| RuntimeError(expr.1.line, format!("{left}{v}")))?;
-                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum > rnum));
                 }
                 Some(TokenType::GreaterEqual) => {
-                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum >= rnum));
                 }
                 Some(TokenType::Less) => {
-                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum < rnum));
                 }
                 Some(TokenType::LessEqual) => {
-                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Bool(lnum <= rnum));
                 }
                 Some(TokenType::Minus) => {
-                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Num(lnum - rnum));
                 }
                 Some(TokenType::Slash) => {
-                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Num(lnum / rnum));
                 }
                 Some(TokenType::Star) => {
-                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
-                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let lnum = left
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
+                    let rnum = right
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Num(lnum * rnum));
                 }
                 Some(TokenType::Plus) => {
-                    let lnum = left.get_num().map_err(|v| RuntimeError(expr.1.line, v));
-                    let rnum = right.get_num().map_err(|v| RuntimeError(expr.1.line, v));
+                    let lnum = left
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v));
+                    let rnum = right
+                        .get_num()
+                        .map_err(|v| RuntimeError(expr.1.line, v));
 
                     if lnum.is_ok() && rnum.is_ok() {
                         return Ok(Literal::Num(
@@ -872,10 +902,10 @@ mod interpreter {
                     }
                     let lstr = left
                         .get_string()
-                        .map_err(|v| RuntimeError(expr.1.line, format!("{left} {v}")))?;
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     let rstr = right
                         .get_string()
-                        .map_err(|v| RuntimeError(expr.1.line, format!("{right} {v}")))?;
+                        .map_err(|v| RuntimeError(expr.1.line, v))?;
                     return Ok(Literal::Str(format!("{lstr}{rstr}")));
                 }
                 Some(TokenType::BangEqual) => Ok(Literal::Bool(left.ne(&right))),
