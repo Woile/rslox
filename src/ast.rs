@@ -92,11 +92,6 @@ impl AstPrinter {
 
         return format!("({name} {r})");
     }
-
-    fn print(&self, exp: Expr) -> () {
-        let ast_generated = exp.accept(self);
-        println!("{ast_generated}");
-    }
 }
 
 impl VisitExpr<String> for AstPrinter {

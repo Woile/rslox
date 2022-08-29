@@ -112,7 +112,6 @@ pub struct Scanner {
     source: String,
     pub tokens: Vec<Token>,
     line: usize,
-    start: usize,
     current: usize,
 }
 
@@ -122,7 +121,6 @@ impl Scanner {
             source,
             tokens: Vec::new(),
             line: 1,
-            start: 0,
             current: 0,
         }
     }
