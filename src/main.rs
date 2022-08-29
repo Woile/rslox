@@ -12,7 +12,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::{error, fmt, fs, io};
 
-use interpreter::Interpreter;
+use interpreter::{Interpreter, RuntimeError};
 
 // struct Jlox;
 
@@ -72,7 +72,14 @@ fn run_file(filepath: &PathBuf, args: &Args) -> JloxResult {
     let source = fs::read_to_string(filepath)?;
     if let Some(err) = run(source, args).err() {
         eprintln!("{:?}", err);
-
+        for cause in err.chain() {
+            if let Some(_) = cause.downcast_ref::<parser::ParserError>() {
+                std::process::exit(65)
+            }
+            if let Some(_) = cause.downcast_ref::<RuntimeError>() {
+                std::process::exit(70)
+            }
+        }
         std::process::exit(65)
     };
     Ok(())
