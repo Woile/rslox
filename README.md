@@ -5,7 +5,10 @@
 ## Features
 
 - [x] Scanner
-- [ ] Parser
+- [x] Parser
+- [x] AST
+- [x] Interpreter (Part I)
+- [ ] Interpreter (Part II - Statements and State)
 
 ## Notes
 
