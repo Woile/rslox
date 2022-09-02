@@ -4,7 +4,7 @@ use anyhow::Result;
 
 use crate::{
     ast::{Binary, Expr, Grouping, Literal, Unary, VisitExpr},
-    scanner::TokenType,
+    scanner::TokenType, statement::{VisitStmt, Stmt},
 };
 
 #[derive(Debug)]
@@ -24,8 +24,33 @@ impl Interpreter {
     pub fn new() -> Self {
         Self {}
     }
-    pub fn evaluate(&self, expr: &Box<Expr>) -> Result<Literal> {
-        expr.accept(self)
+    fn evaluate(&self, expr: &Box<Expr>) -> Result<Literal> {
+        return expr.accept(self)
+    }
+
+    fn execute(&self, stmt: &Box<Stmt>) -> Result<Option<Literal>> {
+        let _ = stmt.accept(self)?;
+        return Ok(None);
+    }
+
+    pub fn interpret(&self, statements: Vec<Box<Stmt>>) -> Result<Option<Literal>> {
+        for stmt in statements {
+            self.execute(&stmt)?;
+        }
+        return Ok(None)
+    }
+}
+
+impl VisitStmt<Result<Option<Literal>>> for Interpreter {
+    fn visit_expr_stmt(&self, expr: &Box<Expr>) -> Result<Option<Literal>> {
+        _ = self.evaluate(expr)?;
+        return Ok(None)
+    }
+
+    fn visit_print_stmt(&self, expr: &crate::statement::PrintStmt) -> Result<Option<Literal>> {
+        let value = self.evaluate(&expr.0)?;
+        println!("{value}");
+        Ok(None)
     }
 }
 

@@ -3,6 +3,7 @@ mod ast;
 mod interpreter;
 mod parser;
 mod scanner;
+mod statement;
 
 use anyhow::Result;
 
@@ -92,13 +93,13 @@ fn run(source: String, args: &Args) -> Result<()> {
         println!("{:#?}", scanner.tokens);
     }
     let mut parser = parser::Parser::new(scanner.tokens);
-    let expr = parser.parse()?;
+    let exprs = parser.parse()?;
 
     if args.print_ast {
-        println!("{:#?}", expr);
+        println!("{:#?}", exprs);
     }
     let interp = Interpreter::new();
-    let lit = interp.evaluate(&expr)?;
-    println!("{}", lit);
+    let res = interp.interpret(exprs)?;
+
     Ok(())
 }

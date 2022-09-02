@@ -1,12 +1,10 @@
 use crate::{
     ast::{Binary, Expr, Grouping, Literal, Unary},
     scanner::{Token, TokenType},
+    statement::{PrintStmt, Stmt},
 };
 
-use std::{
-    error,
-    fmt::{self},
-};
+use std::{error, fmt};
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -36,8 +34,31 @@ impl Parser {
     /// We flip the design proposed in crafting interpreters
     /// This includes the functions `advance`, `check`, `isAtEnd`
     /// `peek` and `previous`
-    pub fn parse(&mut self) -> ParserResult<Box<Expr>> {
-        self.expression()
+    pub fn parse(&mut self) -> ParserResult<Vec<Box<Stmt>>> {
+        let mut stmts = vec![];
+        while !self.is_at_end() {
+            stmts.push(self.statement()?);
+        }
+        return Ok(stmts);
+    }
+
+    fn statement(&mut self) -> ParserResult<Box<Stmt>> {
+        if self.fits(vec![TokenType::Print]) {
+            return self.print_statement();
+        }
+        return self.expression_statement();
+    }
+
+    fn expression_statement(&mut self) -> Result<Box<Stmt>, ParserError> {
+        let expr = self.expression()?;
+        _ = self.consume(TokenType::Semicolon, "Expect ';' after value.".into());
+        return Ok(Box::new(Stmt::Expr(expr)));
+    }
+
+    fn print_statement(&mut self) -> ParserResult<Box<Stmt>> {
+        let expr = self.expression()?;
+        _ = self.consume(TokenType::Semicolon, "Expect ';' after value.".into());
+        return Ok(Box::new(Stmt::PrintStmt(PrintStmt(expr))));
     }
 
     fn expression(&mut self) -> ParserResult<Box<Expr>> {
@@ -212,4 +233,6 @@ impl Parser {
             }
         }
     }
+
+
 }
