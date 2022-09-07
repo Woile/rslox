@@ -127,7 +127,7 @@ impl Scanner {
     pub fn scan_tokens(&mut self) -> Result<(), JLoxError> {
         // let mut tokens = Vec::new();
         let mut iter = multipeek(self.source.chars().enumerate());
-
+        let mut current_token: Vec<char> = Vec::new();
         while let Some((current, symbol)) = iter.next() {
             self.current = current;
             if symbol == '\n' {
@@ -135,12 +135,14 @@ impl Scanner {
                 // No need for now to do anything else if we know is a new line
                 continue;
             }
-            let scan_result = self.scan_token(symbol, &mut iter);
+            let scan_result = self.scan_token(symbol, &mut iter, &mut current_token);
+
             match scan_result {
                 Ok(Some(token_info)) => {
+
                     let token = Token {
                         token_type: Some(token_info.token_type),
-                        lexeme: String::new(),
+                        lexeme: String::from_iter(current_token.drain(..)),
                         literal: token_info.literal,
                         line: self.line,
                     };
@@ -148,6 +150,7 @@ impl Scanner {
                     self.tokens.push(token)
                 }
                 Ok(None) => {
+                    current_token.drain(..);
                     continue;
                 }
                 Err(err) => {
@@ -170,8 +173,10 @@ impl Scanner {
         &self,
         symbol: char,
         iter: &mut MultiPeek<Enumerate<Chars>>,
+        current_token: &mut Vec<char>
     ) -> Result<Option<TokenInfo>, JLoxError> {
         // Returning Ok(None) means keep advancing
+        current_token.push(symbol);
         match symbol {
             '"' => {
                 // String
@@ -182,16 +187,19 @@ impl Scanner {
                         Some((_, '"')) => {
                             // When it's new line break
                             // iter.next();
+                            current_token.push('"');
                             break;
                         }
                         Some((_, '\n')) => {
                             // TODO: move line +1
                             new_lines_count += 1;
                             value.push('\n');
+                            current_token.push('\n');
                             iter.next();
                         }
                         Some((_, char)) => {
                             value.push(*char);
+                            current_token.push(*char);
                             iter.next();
                         }
                         None => {
@@ -211,17 +219,20 @@ impl Scanner {
                 let mut literal = String::from(symbol);
                 loop {
                     match iter.peek() {
-                        Some((_, '1'..='9')) => {
+                        Some((_, '0'..='9')) => {
                             let next_char = iter.next();
                             if let Some((_, ch)) = next_char {
+                                current_token.push(ch);
                                 literal.push(ch);
                             }
                         }
                         Some((_, '.')) => {
-                            let peeked = iter.peek();
-                            if let Some((_, '1'..='9')) = peeked {
+                            let peeked = iter.peek_nth(1);
+
+                            if let Some((_, '0'..='9')) = peeked {
                                 let next_char = iter.next();
                                 if let Some((_, ch)) = next_char {
+                                    current_token.push(ch);
                                     literal.push(ch);
                                 }
                             } else {
@@ -257,6 +268,7 @@ impl Scanner {
                         Some((_, '1'..='9' | '_' | 'a'..='z' | 'A'..='Z')) => {
                             let next_char = iter.next();
                             if let Some((_, ch)) = next_char {
+                                current_token.push(ch);
                                 keyword.push(ch);
                             }
                         }

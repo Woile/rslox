@@ -1,5 +1,6 @@
 #![warn(clippy::pedantic)]
 mod ast;
+mod env;
 mod interpreter;
 mod parser;
 mod scanner;
@@ -11,6 +12,7 @@ use clap::Parser;
 
 use std::io::Write;
 use std::path::PathBuf;
+use std::rc::Rc;
 use std::{error, fmt, fs, io};
 
 use interpreter::{Interpreter, RuntimeError};
@@ -45,9 +47,19 @@ struct Args {
     path: Option<PathBuf>,
 }
 
+struct Program {
+    interpreter: Interpreter,
+}
+impl Program {
+    fn new() -> Self {
+        Self {
+            interpreter: Interpreter::new(),
+        }
+    }
+}
+
 fn main() -> JloxResult {
     let args = Args::parse();
-
     if let Some(path) = &args.path {
         run_file(path, &args)?
     } else {
@@ -58,12 +70,13 @@ fn main() -> JloxResult {
 }
 
 fn run_prompt(args: &Args) -> JloxResult {
+    let program = Program::new();
     loop {
         print!("> ");
         io::stdout().flush().expect("Could not flush");
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
-        if let Some(err) = run(input, args).err() {
+        if let Some(err) = run(input, args, &program).err() {
             eprintln!("{:?}", err);
         };
     }
@@ -71,7 +84,8 @@ fn run_prompt(args: &Args) -> JloxResult {
 
 fn run_file(filepath: &PathBuf, args: &Args) -> JloxResult {
     let source = fs::read_to_string(filepath)?;
-    if let Some(err) = run(source, args).err() {
+    let program = Program::new();
+    if let Some(err) = run(source, args, &program).err() {
         eprintln!("{:?}", err);
         for cause in err.chain() {
             if let Some(_) = cause.downcast_ref::<parser::ParserError>() {
@@ -86,7 +100,7 @@ fn run_file(filepath: &PathBuf, args: &Args) -> JloxResult {
     Ok(())
 }
 
-fn run(source: String, args: &Args) -> Result<()> {
+fn run(source: String, args: &Args, program: &Program) -> Result<()> {
     let mut scanner = scanner::Scanner::new(source);
     let _ = scanner.scan_tokens();
     if args.print_tokens {
@@ -98,8 +112,8 @@ fn run(source: String, args: &Args) -> Result<()> {
     if args.print_ast {
         println!("{:#?}", exprs);
     }
-    let interp = Interpreter::new();
-    let res = interp.interpret(exprs)?;
+
+    let _ = program.interpreter.interpret(exprs)?;
 
     Ok(())
 }

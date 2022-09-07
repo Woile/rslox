@@ -8,6 +8,7 @@ pub enum Expr {
     Literal(Literal),
     Unary(Unary),
     Grouping(Grouping),
+    Variable(Variable),
 }
 
 impl Expr {
@@ -17,12 +18,16 @@ impl Expr {
             Expr::Literal(literal) => visitor.visit_literal(literal),
             Expr::Unary(unary) => visitor.visit_unary(unary),
             Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
+            Expr::Variable(variable) => visitor.visit_variable(variable),
         };
     }
 }
 
 #[derive(Debug)]
 pub struct Binary(pub Box<Expr>, pub Token, pub Box<Expr>);
+
+#[derive(Debug)]
+pub struct Variable { pub name: Token }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
@@ -79,6 +84,7 @@ pub trait VisitExpr<T> {
     fn visit_literal(&self, expr: &Literal) -> T;
     fn visit_unary(&self, expr: &Unary) -> T;
     fn visit_grouping(&self, expr: &Grouping) -> T;
+    fn visit_variable(&self, expr: &Variable) -> T;
 }
 
 struct AstPrinter;
@@ -117,5 +123,9 @@ impl VisitExpr<String> for AstPrinter {
 
     fn visit_grouping(&self, expr: &Grouping) -> String {
         self.parenthesize("group".to_string(), &[expr.0.as_ref()])
+    }
+
+    fn visit_variable(&self, expr: &Variable) -> String {
+        todo!("visit variable not implemented")
     }
 }

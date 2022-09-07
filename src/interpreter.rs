@@ -4,7 +4,9 @@ use anyhow::Result;
 
 use crate::{
     ast::{Binary, Expr, Grouping, Literal, Unary, VisitExpr},
-    scanner::TokenType, statement::{VisitStmt, Stmt},
+    env::Environment,
+    scanner::TokenType,
+    statement::{Stmt, VisitStmt},
 };
 
 #[derive(Debug)]
@@ -18,14 +20,18 @@ impl fmt::Display for RuntimeError {
 impl error::Error for RuntimeError {}
 
 // type RuntimeResult<T> = Result<T, RuntimeError>;
-pub struct Interpreter;
+pub struct Interpreter {
+    environment: Environment,
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            environment: Environment::new(),
+        }
     }
     fn evaluate(&self, expr: &Box<Expr>) -> Result<Literal> {
-        return expr.accept(self)
+        return expr.accept(self);
     }
 
     fn execute(&self, stmt: &Box<Stmt>) -> Result<Option<Literal>> {
@@ -37,19 +43,25 @@ impl Interpreter {
         for stmt in statements {
             self.execute(&stmt)?;
         }
-        return Ok(None)
+        return Ok(None);
     }
 }
 
 impl VisitStmt<Result<Option<Literal>>> for Interpreter {
-    fn visit_expr_stmt(&self, expr: &Box<Expr>) -> Result<Option<Literal>> {
-        _ = self.evaluate(expr)?;
-        return Ok(None)
+    fn visit_expr_stmt(&self, stmt: &Box<Expr>) -> Result<Option<Literal>> {
+        _ = self.evaluate(stmt)?;
+        return Ok(None);
     }
 
-    fn visit_print_stmt(&self, expr: &crate::statement::PrintStmt) -> Result<Option<Literal>> {
-        let value = self.evaluate(&expr.0)?;
+    fn visit_print_stmt(&self, stmt: &crate::statement::PrintStmt) -> Result<Option<Literal>> {
+        let value = self.evaluate(&stmt.0)?;
         println!("{value}");
+        Ok(None)
+    }
+
+    fn visit_var_stmt(&self, stmt: &crate::statement::Var) -> Result<Option<Literal>> {
+        let value = self.evaluate(&stmt.initializer)?;
+        self.environment.define(&stmt.name.lexeme, value);
         Ok(None)
     }
 }
@@ -139,5 +151,9 @@ impl VisitExpr<Result<Literal>> for Interpreter {
 
     fn visit_grouping(&self, expr: &Grouping) -> Result<Literal> {
         self.evaluate(&expr.0)
+    }
+
+    fn visit_variable(&self, expr: &crate::ast::Variable) -> Result<Literal> {
+        return self.environment.get(&expr.name)
     }
 }

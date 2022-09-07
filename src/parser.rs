@@ -1,10 +1,10 @@
 use crate::{
-    ast::{Binary, Expr, Grouping, Literal, Unary},
+    ast::{Binary, Expr, Grouping, Literal, Unary, Variable},
     scanner::{Token, TokenType},
-    statement::{PrintStmt, Stmt},
+    statement::{PrintStmt, Stmt, Var},
 };
 
-use std::{error, fmt};
+use std::{cell::RefCell, error, fmt, rc::Rc};
 
 #[derive(Debug)]
 pub struct ParserError {
@@ -23,12 +23,16 @@ type ParserResult<T> = Result<T, ParserError>;
 
 pub struct Parser {
     tokens: Vec<Token>,
-    current: usize,
+    // current: usize,
+    current: Rc<RefCell<usize>>,
 }
 
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, current: 0 }
+        Self {
+            tokens,
+            current: Rc::new(RefCell::new(0)),
+        }
     }
 
     /// We flip the design proposed in crafting interpreters
@@ -37,9 +41,38 @@ impl Parser {
     pub fn parse(&mut self) -> ParserResult<Vec<Box<Stmt>>> {
         let mut stmts = vec![];
         while !self.is_at_end() {
-            stmts.push(self.statement()?);
+            let decl = self.declaration();
+            match decl {
+                Ok(stmt) => stmts.push(stmt),
+                Err(_) => {
+                    self.synchronize();
+                }
+            }
+            // stmts.push(self.statement()?);
         }
         return Ok(stmts);
+    }
+
+    fn declaration(&mut self) -> ParserResult<Box<Stmt>> {
+        if self.fits(vec![TokenType::Var]) {
+            return self.var_declaration();
+        }
+        return self.statement();
+    }
+
+    fn var_declaration(&mut self) -> ParserResult<Box<Stmt>> {
+        let token = self.consume(TokenType::Identifier, "Expect variable name.".into())?;
+        let initializer: Box<Expr>;
+        if self.fits(vec![TokenType::Equal]) {
+            initializer = self.expression()?;
+        } else {
+            return Err(ParserError {
+                line: token.line,
+                message: "No token matched during var_declaration".into(),
+            })
+        }
+        _ = self.consume(TokenType::Semicolon, "Expect ';' after variable declaration".into());
+        return Ok(Box::new(Stmt::Var(Var { name: token.clone(), initializer })));
     }
 
     fn statement(&mut self) -> ParserResult<Box<Stmt>> {
@@ -61,11 +94,11 @@ impl Parser {
         return Ok(Box::new(Stmt::PrintStmt(PrintStmt(expr))));
     }
 
-    fn expression(&mut self) -> ParserResult<Box<Expr>> {
+    fn expression(&self) -> ParserResult<Box<Expr>> {
         return self.equality();
     }
 
-    fn equality(&mut self) -> ParserResult<Box<Expr>> {
+    fn equality(&self) -> ParserResult<Box<Expr>> {
         let mut expr = self.comparison()?;
         while self.fits(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
             let operator = self.previous().clone();
@@ -75,7 +108,7 @@ impl Parser {
         return Ok(expr);
     }
 
-    fn comparison(&mut self) -> ParserResult<Box<Expr>> {
+    fn comparison(&self) -> ParserResult<Box<Expr>> {
         let mut expr = self.term()?;
         while self.fits(vec![
             TokenType::Greater,
@@ -89,7 +122,7 @@ impl Parser {
         }
         return Ok(expr);
     }
-    fn term(&mut self) -> ParserResult<Box<Expr>> {
+    fn term(&self) -> ParserResult<Box<Expr>> {
         let mut expr = self.factor()?;
         while self.fits(vec![TokenType::Minus, TokenType::Plus]) {
             let operator = self.previous().clone();
@@ -99,7 +132,7 @@ impl Parser {
         return Ok(expr);
     }
 
-    fn factor(&mut self) -> ParserResult<Box<Expr>> {
+    fn factor(&self) -> ParserResult<Box<Expr>> {
         let mut expr = self.unary()?;
         while self.fits(vec![TokenType::Slash, TokenType::Star]) {
             let operator = self.previous().clone();
@@ -109,7 +142,7 @@ impl Parser {
         return Ok(expr);
     }
 
-    fn unary(&mut self) -> ParserResult<Box<Expr>> {
+    fn unary(&self) -> ParserResult<Box<Expr>> {
         if self.fits(vec![TokenType::Bang, TokenType::Minus]) {
             let operator = self.previous().clone();
             let right = self.unary()?;
@@ -118,7 +151,7 @@ impl Parser {
         return self.primary();
     }
 
-    fn primary(&mut self) -> ParserResult<Box<Expr>> {
+    fn primary(&self) -> ParserResult<Box<Expr>> {
         if self.fits(vec![TokenType::False]) {
             return Ok(Box::new(Expr::Literal(Literal::Bool(false))));
         }
@@ -143,13 +176,19 @@ impl Parser {
             return Ok(Box::new(Expr::Grouping(Grouping(expr))));
         }
 
+        if self.fits(vec![TokenType::Identifier]) {
+            let prev_token = self.previous();
+            return Ok(Box::new(Expr::Variable(Variable { name: prev_token.clone() })))
+        }
+
         Err(ParserError {
             line: 1,
             message: "Something went wrong".into(),
         })
     }
 
-    fn fits(&mut self, token_types: Vec<TokenType>) -> bool {
+    fn fits(&self, token_types: Vec<TokenType>) -> bool {
+        // Replaces `match` from the book
         for token_type in token_types {
             if self.check(token_type) {
                 self.advance();
@@ -158,7 +197,7 @@ impl Parser {
         }
         return false;
     }
-    fn check_is_num(&mut self) -> bool {
+    fn check_is_num(&self) -> bool {
         if self.is_at_end() {
             return false;
         }
@@ -177,9 +216,10 @@ impl Parser {
         }
         return self.peek().token_type == Some(token_type);
     }
-    fn advance(&mut self) -> &Token {
+    fn advance(&self) -> &Token {
         if !self.is_at_end() {
-            self.current += 1;
+            let pcurrent = self.current.clone();
+            *pcurrent.borrow_mut() += 1;
         }
         return &self.previous();
     }
@@ -189,17 +229,21 @@ impl Parser {
     }
 
     fn peek(&self) -> &Token {
-        &self.tokens[self.current]
+        &self.tokens[self.get_current()]
+    }
+
+    fn get_current(&self) -> usize {
+        *self.current.borrow()
     }
 
     fn previous(&self) -> &Token {
-        if self.current == 0 {
+        if self.get_current() == 0 {
             return &self.tokens[0];
         }
-        &self.tokens[self.current - 1]
+        &self.tokens[self.get_current() - 1]
     }
 
-    fn consume(&mut self, token_type: TokenType, message: String) -> ParserResult<&Token> {
+    fn consume(&self, token_type: TokenType, message: String) -> ParserResult<&Token> {
         if self.check(token_type) {
             return Ok(self.advance());
         }
@@ -210,7 +254,7 @@ impl Parser {
         })
     }
 
-    fn synchronize(&mut self) -> () {
+    fn synchronize(&self) -> () {
         let _ = self.advance();
         while !self.is_at_end() {
             if self.previous().token_type == Some(TokenType::Semicolon) {
@@ -233,6 +277,4 @@ impl Parser {
             }
         }
     }
-
-
 }
