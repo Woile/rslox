@@ -12,7 +12,6 @@ use clap::Parser;
 
 use std::io::Write;
 use std::path::PathBuf;
-use std::rc::Rc;
 use std::{error, fmt, fs, io};
 
 use interpreter::{Interpreter, RuntimeError};

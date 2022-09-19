@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Binary, Expr, Grouping, Literal, Unary, Variable},
+    ast::{Assignment, Binary, Expr, Grouping, Literal, Unary, Variable},
     scanner::{Token, TokenType},
     statement::{PrintStmt, Stmt, Var},
 };
@@ -27,6 +27,11 @@ pub struct Parser {
     current: Rc<RefCell<usize>>,
 }
 
+// Build the AST syntax tree
+// Recursive descent parsing
+// Expressions are split into different rules to have
+// precedence and associativity, in order to avoid
+// ambiguous results.
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
@@ -35,9 +40,6 @@ impl Parser {
         }
     }
 
-    /// We flip the design proposed in crafting interpreters
-    /// This includes the functions `advance`, `check`, `isAtEnd`
-    /// `peek` and `previous`
     pub fn parse(&mut self) -> ParserResult<Vec<Box<Stmt>>> {
         let mut stmts = vec![];
         while !self.is_at_end() {
@@ -69,10 +71,16 @@ impl Parser {
             return Err(ParserError {
                 line: token.line,
                 message: "No token matched during var_declaration".into(),
-            })
+            });
         }
-        _ = self.consume(TokenType::Semicolon, "Expect ';' after variable declaration".into());
-        return Ok(Box::new(Stmt::Var(Var { name: token.clone(), initializer })));
+        _ = self.consume(
+            TokenType::Semicolon,
+            "Expect ';' after variable declaration".into(),
+        );
+        return Ok(Box::new(Stmt::Var(Var {
+            name: token.clone(),
+            initializer,
+        })));
     }
 
     fn statement(&mut self) -> ParserResult<Box<Stmt>> {
@@ -95,9 +103,28 @@ impl Parser {
     }
 
     fn expression(&self) -> ParserResult<Box<Expr>> {
-        return self.equality();
+        return self.assignment();
     }
 
+    fn assignment(&self) -> ParserResult<Box<Expr>> {
+        let expr = self.equality()?;
+        if self.fits(vec![TokenType::Equal]) {
+            let equals = self.previous();
+            let value = self.assignment()?;
+
+            return match *expr {
+                Expr::Variable(var) => {
+                    let name = var.name;
+                    Ok(Box::new(Expr::Assignment(Assignment::new(name, value))))
+                }
+                _ => Err(ParserError {
+                    line: equals.line,
+                    message: "Invalid assignment target".into(),
+                }),
+            };
+        }
+        return Ok(expr);
+    }
     fn equality(&self) -> ParserResult<Box<Expr>> {
         let mut expr = self.comparison()?;
         while self.fits(vec![TokenType::BangEqual, TokenType::EqualEqual]) {
@@ -178,7 +205,9 @@ impl Parser {
 
         if self.fits(vec![TokenType::Identifier]) {
             let prev_token = self.previous();
-            return Ok(Box::new(Expr::Variable(Variable { name: prev_token.clone() })))
+            return Ok(Box::new(Expr::Variable(Variable {
+                name: prev_token.clone(),
+            })));
         }
 
         Err(ParserError {

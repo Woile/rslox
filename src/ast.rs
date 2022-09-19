@@ -9,6 +9,7 @@ pub enum Expr {
     Unary(Unary),
     Grouping(Grouping),
     Variable(Variable),
+    Assignment(Assignment),
 }
 
 impl Expr {
@@ -19,7 +20,18 @@ impl Expr {
             Expr::Unary(unary) => visitor.visit_unary(unary),
             Expr::Grouping(grouping) => visitor.visit_grouping(grouping),
             Expr::Variable(variable) => visitor.visit_variable(variable),
+            Expr::Assignment(assignment) => visitor.visit_assignment(assignment),
         };
+    }
+}
+#[derive(Debug)]
+pub struct Assignment {
+    pub name: Token,
+    pub value: Box<Expr>,
+}
+impl Assignment {
+    pub fn new(name: Token, value: Box<Expr>) -> Self {
+        Self { name, value }
     }
 }
 
@@ -27,7 +39,9 @@ impl Expr {
 pub struct Binary(pub Box<Expr>, pub Token, pub Box<Expr>);
 
 #[derive(Debug)]
-pub struct Variable { pub name: Token }
+pub struct Variable {
+    pub name: Token,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
@@ -85,6 +99,7 @@ pub trait VisitExpr<T> {
     fn visit_unary(&self, expr: &Unary) -> T;
     fn visit_grouping(&self, expr: &Grouping) -> T;
     fn visit_variable(&self, expr: &Variable) -> T;
+    fn visit_assignment(&self, expr: &Assignment) -> T;
 }
 
 struct AstPrinter;
@@ -125,7 +140,13 @@ impl VisitExpr<String> for AstPrinter {
         self.parenthesize("group".to_string(), &[expr.0.as_ref()])
     }
 
-    fn visit_variable(&self, expr: &Variable) -> String {
+    fn visit_variable(&self, _: &Variable) -> String {
+        // AST Printer is no longer that's why we leave it to todo
         todo!("visit variable not implemented")
+    }
+
+    fn visit_assignment(&self, _: &Assignment) -> String {
+        // AST Printer is no longer that's why we leave it to todo
+        todo!()
     }
 }

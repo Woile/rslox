@@ -13,19 +13,23 @@ impl Environment {
         }
     }
 
-    pub fn define(&self, name: &str, value: Literal) {
+    pub fn define(&self, name: &Token, value: Literal) {
         let envmap = &*self.values.clone();
-        envmap.borrow_mut().insert(name.to_string(), value);
-        println!("updated {:?}", self.values);
+        envmap.borrow_mut().insert(name.lexeme.to_string(), value);
     }
 
     pub fn get(&self, name: &Token) -> Result<Literal> {
-        println!("{:?}", self.values);
         (*self.values.clone().borrow())
             .get(&name.lexeme)
             .and_then(|v| Some(v.clone()))
             .ok_or_else(|| {
                 RuntimeError(name.line, format!("Undefined variable {}", name.lexeme)).into()
             })
+    }
+
+    pub fn assign(&self, name: &Token, value: Literal) -> Result<()>{
+        let _ = self.get(name)?; // check if it exists first
+        self.define(name, value); // Set value
+        return Ok(())
     }
 }

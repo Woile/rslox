@@ -35,8 +35,8 @@ impl Interpreter {
     }
 
     fn execute(&self, stmt: &Box<Stmt>) -> Result<Option<Literal>> {
-        let _ = stmt.accept(self)?;
-        return Ok(None);
+        let ex = stmt.accept(self)?;
+        return Ok(ex);
     }
 
     pub fn interpret(&self, statements: Vec<Box<Stmt>>) -> Result<Option<Literal>> {
@@ -61,7 +61,7 @@ impl VisitStmt<Result<Option<Literal>>> for Interpreter {
 
     fn visit_var_stmt(&self, stmt: &crate::statement::Var) -> Result<Option<Literal>> {
         let value = self.evaluate(&stmt.initializer)?;
-        self.environment.define(&stmt.name.lexeme, value);
+        self.environment.define(&stmt.name, value);
         Ok(None)
     }
 }
@@ -154,6 +154,12 @@ impl VisitExpr<Result<Literal>> for Interpreter {
     }
 
     fn visit_variable(&self, expr: &crate::ast::Variable) -> Result<Literal> {
-        return self.environment.get(&expr.name)
+        self.environment.get(&expr.name)
+    }
+
+    fn visit_assignment(&self, expr: &crate::ast::Assignment) -> Result<Literal> {
+        let value = self.evaluate(&expr.value)?;
+        _ = self.environment.assign(&expr.name, value.clone())?;
+        return Ok(value);
     }
 }
